@@ -1,0 +1,10 @@
+<launch>
+    <node name="simple_offboard" pkg="clover" type="simple_offboard" required="true" output="screen">
+        <param name="transform_timeout" value="1.0"/>
+    </node>
+    <node name="rc" pkg="clover" type="rc" required="true" output="screen">
+        <param name="use_fake_gcs" value="false"/>
+    </node>
+    <node name="clover_blocks" pkg="clover_blocks" type="clover_blocks" required="true" output="screen"/>
+    <test test-name="safety_integration" pkg="clover" type="safety_integration.py" time-limit="60"/>
+</launch>

@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+
+# Copyright (C) 2020 Copter Express Technologies
+#
+# Author: Oleg Kalachev <okalachev@gmail.com>
+#
+# Distributed under MIT License (available at https://opensource.org/licenses/MIT).
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+from __future__ import print_function
+
+import rospy
+import os, sys
+import re
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from program_runner import ProgramRunner
+from std_msgs.msg import Bool, String
+from std_srvs.srv import Trigger
+from clover_blocks.srv import Run, Load, Store
+
+
+rospy.init_node('clover_blocks')
+
+running_pub = rospy.Publisher('~running', Bool, queue_size=1, latch=True)
+block_pub = rospy.Publisher('~block', String, queue_size=1, latch=True)
+error_pub = rospy.Publisher('~error', String, queue_size=10)
+
+
+running_pub.publish(False)
+
+
+def publish_running(running):
+    if not running:
+        block_pub.publish('')
+    running_pub.publish(running)
+
+
+runner = ProgramRunner(
+    [sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'clover_blocks_worker'), rospy.get_name()],
+    publish_running, error_pub.publish)
+rospy.on_shutdown(runner.stop)
+
+
+def run(req):
+    try:
+        if not runner.start(req.code):
+            return {'success': False, 'message': 'Already running'}
+        return {'success': True}
+    except Exception as e:
+        rospy.logerr(str(e))
+        return {'success': False, 'message': str(e)}
+
+
+def stop(req):
+    try:
+        runner.stop()
+        return {'success': True}
+    except Exception as e:
+        return {'success': False, 'message': str(e)}
+
+
+# TODO: find dir in installed package
+programs_path = rospy.get_param('~programs_dir', os.path.dirname(os.path.abspath(__file__)) + '/../programs')
+
+
+def load(req):
+    res = {'names': [], 'programs': [], 'success': True}
+    try:
+        for currentpath, folders, files in os.walk(programs_path):
+            for f in files:
+                if not f.endswith('.xml'):
+                    continue
+                filename = os.path.join(currentpath, f)
+                res['names'].append(os.path.relpath(filename, programs_path))
+                res['programs'].append(open(filename, 'r').read())
+        return res
+    except Exception as e:
+        rospy.logerr(e)
+        return {'names': [], 'programs': [], 'message': str(e)}
+
+
+name_regexp = re.compile(r'^[a-zA-Z1-9-_.]{0,30}$')
+
+def store(req):
+    if not name_regexp.match(req.name):
+        return {'message': 'Bad program name'}
+
+    filename = os.path.abspath(os.path.join(programs_path, req.name))
+    try:
+        open(filename, 'w').write(req.program)
+        return {'success': True, 'message': 'Stored to ' + filename}
+    except Exception as e:
+        rospy.logerr(e)
+        return {'names': [], 'programs': [], 'message': str(e)}
+
+
+rospy.Service('~run', Run, run)
+rospy.Service('~stop', Trigger, stop)
+rospy.Service('~load', Load, load)
+rospy.Service('~store', Store, store)
+
+
+rospy.loginfo('Ready')
+rospy.spin()

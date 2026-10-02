@@ -1,0 +1,11 @@
+[Unit]
+Description=Restrict unauthenticated ROS/control endpoints to localhost
+Before=roscore.service clover.service butterfly.socket
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/clover-network-guard
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

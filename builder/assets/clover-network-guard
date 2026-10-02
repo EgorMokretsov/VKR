@@ -1,0 +1,28 @@
+#!/bin/sh
+# ROS 1 opens dynamic TCP ports and has no native authentication. Protect all
+# of them on non-loopback interfaces, for both IPv4 and IPv6. SSH and the
+# static web site remain reachable; control/video require SSH forwarding.
+set -eu
+backends='iptables ip6tables'
+# Some kernels support IPv6 filtering through nftables but do not provide the
+# old ip6table_filter module. Use one working backend for both address families.
+if command -v iptables-nft >/dev/null && command -v ip6tables-nft >/dev/null &&
+    iptables-nft -w -L >/dev/null 2>&1 && ip6tables-nft -w -L >/dev/null 2>&1; then
+    backends='iptables-nft ip6tables-nft'
+fi
+for firewall in $backends; do
+    # Replace our chain atomically, preserving other chains and existing rules.
+    "$firewall-restore" --noflush -w <<'RULES'
+*filter
+:CLOVER_LOCAL - [0:0]
+-F CLOVER_LOCAL
+-A CLOVER_LOCAL -i lo -j RETURN
+-A CLOVER_LOCAL -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+-A CLOVER_LOCAL -p tcp -m multiport --dports 22,80,443 -j RETURN
+-A CLOVER_LOCAL -p tcp -j DROP
+-A CLOVER_LOCAL -p udp --dport 35602 -j DROP
+-A CLOVER_LOCAL -j RETURN
+COMMIT
+RULES
+    "$firewall" -w -C INPUT -j CLOVER_LOCAL 2>/dev/null || "$firewall" -w -I INPUT 1 -j CLOVER_LOCAL
+done

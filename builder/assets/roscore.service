@@ -1,0 +1,13 @@
+[Unit]
+Description=Launcher for the ROS master, parameter server and rosout logging node
+Requires=clover-network-guard.service
+After=clover-network-guard.service
+
+[Service]
+User=pi
+ExecStart=/bin/sh -c ". /opt/ros/noetic/setup.sh; ROS_HOSTNAME=`hostname`.local exec roscore"
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
